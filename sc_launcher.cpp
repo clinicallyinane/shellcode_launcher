@@ -23,7 +23,7 @@
 #include <ctype.h>
 #include <Windows.h>
 
-#define EXTRA_SPACE     0x100
+#define EXTRA_SPACE     0x10000
 #define MAX_REG_NAME_SIZE 4
 
 #define REG_EAX         0
@@ -102,7 +102,7 @@ struct FileInfo {
 struct ConfigurationData {
     int             doBp;
     DWORD           startOff;
-    int             gotOffset;
+	DWORD			baseAddress;
 	char*           shellcodeFilename;
 	DWORD           shellcodeSize;
     int             setRegStart[NUM_REGISTERS];
@@ -115,9 +115,10 @@ struct ConfigurationData {
 
 void usage(void) {
     printf("Usage: shellcode_launcher.exe\n");
-	printf("shellcode_launcher.exe -i <shellcode_filename> -o <offset> [-bp] [-r <in_filename>]\n   [-w <in_filename>] [-L <lib_name] [-<reg>][+<reg>]\n");
+	printf("shellcode_launcher.exe -i <shellcode_filename> -o <offset> -ba <base_address> [-bp] [-r <in_filename>]\n   [-w <in_filename>] [-L <lib_name] [-<reg>][+<reg>]\n");
     printf("  <shellcode_filename> is the binary containing the shellcode to execute\n");
     printf("  <offset> is the (decimal) offset into the shellcode to start executing\n");
+	printf("  <base_address> is your preferred base address to insert the shellcode (i.e. 0xFD0000\n");
     printf("  <in_filename> is an additional file to open, either readonly (-r) \n");
     printf("     or writeable (-w), such as for a malicious PDF the shellcode\n");
     printf("     requires an open handle for\n");
@@ -268,9 +269,12 @@ int createShellcodeBuffer(struct ConfigurationData* config, unsigned char** outB
 		printf("Execution offset larger than file size!\n");
 		return -1;
 	}
+	if(config->baseAddress) {
+        config->baseAddress -= EXTRA_SPACE; 
+	}
 
     //extra space for extra pieces
-	unsigned char* buffer = (unsigned char*)VirtualAlloc(NULL, config->shellcodeSize + EXTRA_SPACE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	unsigned char* buffer = (unsigned char*)VirtualAlloc((PVOID) config->baseAddress, config->shellcodeSize + EXTRA_SPACE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
 	if(buffer == NULL) {
 		printf("Couldn't allocate %d bytes\n", config->shellcodeSize);
@@ -412,6 +416,11 @@ int parseCommandLineArgs(int argc, char** argv, struct ConfigurationData* config
             char *endOfString = NULL;
             config->startOff = strtoul(argv[i+1], &endOfString, 0);
             printf("Using starting offset: 0x%08x (%d)\n", config->startOff, config->startOff);
+            i += 2;
+		} else if (isStrEqual(argv[i], "-ba")) {
+            char *endOfString = NULL;
+            config->baseAddress = strtoul(argv[i+1], &endOfString, 0);
+            printf("Using base address: 0x%08x (%d)\n", config->baseAddress, config->baseAddress);
             i += 2;
         } else if (isStrEqual(argv[i], "-bp")) {
             config->doBp = 1;
